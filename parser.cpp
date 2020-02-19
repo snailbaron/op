@@ -1,7 +1,7 @@
-#include <cassert>
-
-#include <op/errors.hpp>
 #include <op/parser.hpp>
+
+#include <cassert>
+#include <memory>
 
 namespace op {
 
@@ -21,7 +21,7 @@ void Parser::parseImpl(
     const std::vector<std::string>& args, bool stopAtNonOption)
 {
     std::vector<std::string> leftovers;
-    std::vector<Error> errors;
+    std::vector<std::unique_ptr<Error>> errors;
 
     for (auto arg = args.begin(); arg != args.end(); ++arg) {
         assert(!arg->empty());
@@ -32,14 +32,15 @@ void Parser::parseImpl(
                         keyOp != _ops.end()) {
                     auto& op = keyOp->second;
 
-                    if (!op->requiresArgument()) {
+                    if (op->isFlag) {
                         op->raise();
                     } else {
                         if (i + 1 == arg->length()) {
                             ++arg;
                             if (arg == args.end()) {
-                                errors.push_back(MissingArgument{
-                                    std::string{"-"} + arg->at(i)});
+                                errors.push_back(
+                                    std::make_unique<MissingArgument>(
+                                        std::string{"-"} + arg->at(i)));
                             } else {
                                 op->set(*arg);
                             }
@@ -50,7 +51,8 @@ void Parser::parseImpl(
                     }
                 } else {
                     errors.push_back(
-                        UnknownOption{std::string{"-"} + arg->at(i)});
+                        std::make_unique<UnknownOption>(
+                            std::string{"-"} + arg->at(i)));
                 }
             }
         } else if (
@@ -60,18 +62,18 @@ void Parser::parseImpl(
 
                 ++arg;
                 if (arg == args.end()) {
-                    errors.push_back(MissingArgument{*arg});
+                    errors.push_back(std::make_unique<MissingArgument>(*arg));
                 } else {
                     op->set(*arg);
                 }
             } else {
-                errors.push_back(UnknownOption{*arg});
+                errors.push_back(std::make_unique<UnknownOption>(*arg));
             }
         } else if (*arg == "--") {
             std::copy(++arg, args.end(), std::back_inserter(leftovers));
             return;
         } else {
-            if (stopOnFirstNonoption) {
+            if (stopAtNonOption) {
                 std::copy(arg, args.end(), std::back_inserter(leftovers));
             } else {
                 leftovers.push_back(*arg);

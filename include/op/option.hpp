@@ -1,11 +1,13 @@
 #pragma once
 
+#include <any>
 #include <cassert>
 #include <memory>
 #include <optional>
 #include <sstream>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace op {
@@ -19,55 +21,133 @@ T parseValue(std::string_view string)
     return value;
 }
 
-class Option {
-public:
-    virtual ~Option() {}
+struct BaseOptionData {
+    virtual ~BaseOptionData() {}
 
-    virtual bool isFlag() const = 0;
+    virtual void raise() { assert(false); }
+    virtual void set(std::string_view) { assert(false); }
 
-    virtual void raise() = 0;
-    virtual void set(std::string_view string) = 0;
+    std::string help;
+    std::string metavar = "VALUE";
+    bool isFlag = false;
 };
 
-template <class T, bool Multi, bool Flag>
-class TypedOption : public Option {
-    static_assert(
-        !Flag ||
-        (Multi && std::is_same<T, size_t>()) ||
-        (!Multi && std::is_same<T, bool>()));
+template <class T>
+struct OptionData : BaseOptionData {
+    void raise() override
+    {
+        assert((std::is_same<T, bool>()));
+        assert(isFlag);
+        value = true;
+    }
 
+    void set(std::string_view valueString) override
+    {
+        assert(!isFlag);
+        value = parseValue<T>(valueString);
+    }
+
+    std::optional<T> defaultValue;
+    std::optional<T> value;
+};
+
+template <class T>
+struct MultiOptionData : BaseOptionData {
+    void set(std::string_view valueString) override
+    {
+        assert(!isFlag);
+        values.push_back(parseValue<T>(valueString));
+    }
+
+    std::vector<T> values;
+};
+
+template <class OptionType>
+class BaseOption {
 public:
-    bool isFlag() const override
+    OptionType help(std::string_view helpString)
     {
-        return Flag;
+        me()._data->help = helpString;
+        return me();
     }
 
-    template <bool _Flag = Flag, class = std::enable_if_t<_Flag>>
-    void raise()
+    OptionType metavar(std::string_view metavarString)
     {
-        if constexpr (Multi) {
-            _data->value++;
-        } else {
-            _data->value = true;
-        }
-    }
-
-    template <bool _Flag = Flag, class = std::enable_if_t<!_Flag>>
-    void set(std::string_view string)
-    {
-        if constexpr (Multi) {
-            _data->value.push_back(parseValue<T>(string));
-        } else {
-            _data->value = parseValue<T>(string);
-        }
+        me()._data->metavar = metavarString;
+        return me();
     }
 
 private:
-    struct Data {
-        std::conditional_t<Multi, std::vector<T>, std::optional<T>> value;
-    };
+    OptionType& me()
+    {
+        return static_cast<OptionType&>(*this);
+    }
+};
 
-    std::shared_ptr<Data> _data = std::make_shared<Data>();
+template <class T>
+class Option : public BaseOption<Option<T>> {
+public:
+    Option(std::shared_ptr<OptionData<T>> data)
+        : _data(std::move(data))
+    { }
+
+    const T& operator*() const
+    {
+        return _data->value;
+    }
+
+    operator const T&() const
+    {
+        return *this;
+    }
+
+    Option& operator=(const T& value)
+    {
+        _data->value = value;
+    }
+
+    Option& operator=(T&& value)
+    {
+        _data->value = std::move(value);
+    }
+
+private:
+    std::shared_ptr<OptionData<T>> _data;
+
+    friend BaseOption<Option<T>>;
+};
+
+template <class T>
+class MultiOption : public BaseOption<MultiOption<T>> {
+public:
+    MultiOption(std::shared_ptr<MultiOptionData<T>> data)
+        : _data(std::move(data))
+    { }
+
+    auto begin() const noexcept
+    {
+        return _data->values.begin();
+    }
+
+    auto begin() noexcept
+    {
+        return _data->values.begin();
+    }
+
+    auto end() const noexcept
+    {
+        return _data->values.end();
+    }
+
+    auto end() noexcept
+    {
+        return _data->values.end();
+    }
+
+private:
+    std::shared_ptr<MultiOptionData<T>> _data;
+
+    friend BaseOption<MultiOption<T>>;
 };
 
 } // namespace op

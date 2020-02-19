@@ -18,6 +18,10 @@ std::ostream& operator<<(std::ostream& output, const Error& error)
 }
 
 struct UnknownOption : Error {
+    UnknownOption(std::string_view option)
+        : option(std::string{option})
+    { }
+
     void print(std::ostream& output) const override
     {
         output << "unknown option: " << option;
@@ -27,12 +31,29 @@ struct UnknownOption : Error {
 };
 
 struct MissingArgument : Error {
+    MissingArgument(std::string_view option)
+        : option(std::string{option})
+    { }
+
     void print(std::ostream& output) const override
     {
         output << "missing argument for option: " << option;
     }
 
     std::string option;
+};
+
+struct KeyOverwritten : Error {
+    KeyOverwritten(std::string_view key)
+        : key(std::string{key})
+    { }
+
+    void print(std::ostream& output) const override
+    {
+        output << "key is reused: " << key;
+    }
+
+    std::string key;
 };
 
 } // namespace op
