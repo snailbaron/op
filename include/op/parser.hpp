@@ -19,6 +19,7 @@ public:
     Option<bool> flag(Args&&... args)
     {
         auto data = std::make_shared<OptionData<bool>>();
+
         data->isFlag = true;
         (addOption(args, data), ...);
         return {data};

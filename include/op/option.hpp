@@ -1,7 +1,10 @@
 #pragma once
 
+#include <op/value.hpp>
+
 #include <any>
 #include <cassert>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -12,54 +15,28 @@
 
 namespace op {
 
-template <class T>
-T parseValue(std::string_view string)
-{
-    // TODO: strings with spaces?
-    T value;
-    std::istringstream{string} >> value;
-    return value;
-}
-
-struct BaseOptionData {
-    virtual ~BaseOptionData() {}
-
-    virtual void raise() { assert(false); }
-    virtual void set(std::string_view) { assert(false); }
-
+struct OptionData {
     std::string help;
     std::string metavar = "VALUE";
-    bool isFlag = false;
+    bool requiresArgument = false;
+    Value value;
 };
 
-template <class T>
-struct OptionData : BaseOptionData {
-    void raise() override
+class OptionWriter {
+public:
+    bool requiresArgument() const
     {
-        assert((std::is_same<T, bool>()));
-        assert(isFlag);
-        value = true;
+        return _data->requiresArgument;
     }
 
-    void set(std::string_view valueString) override
+    void set(std::string_view string = "")
     {
-        assert(!isFlag);
-        value = parseValue<T>(valueString);
+        _set(_data->value, string);
     }
 
-    std::optional<T> defaultValue;
-    std::optional<T> value;
-};
-
-template <class T>
-struct MultiOptionData : BaseOptionData {
-    void set(std::string_view valueString) override
-    {
-        assert(!isFlag);
-        values.push_back(parseValue<T>(valueString));
-    }
-
-    std::vector<T> values;
+private:
+    std::shared_ptr<OptionData> _data;
+    std::function<void(std::any&, std::string_view)> _set;
 };
 
 template <class OptionType>
@@ -78,7 +55,7 @@ public:
     }
 
 private:
-    OptionType& me()
+    constexpr OptionType& me()
     {
         return static_cast<OptionType&>(*this);
     }
@@ -87,13 +64,13 @@ private:
 template <class T>
 class Option : public BaseOption<Option<T>> {
 public:
-    Option(std::shared_ptr<OptionData<T>> data)
+    Option(std::shared_ptr<OptionData> data)
         : _data(std::move(data))
     { }
 
     const T& operator*() const
     {
-        return _data->value;
+        return std::any_cast<const T&>(_data->value);
     }
 
     operator const T&() const
@@ -101,18 +78,8 @@ public:
         return *this;
     }
 
-    Option& operator=(const T& value)
-    {
-        _data->value = value;
-    }
-
-    Option& operator=(T&& value)
-    {
-        _data->value = std::move(value);
-    }
-
 private:
-    std::shared_ptr<OptionData<T>> _data;
+    std::shared_ptr<OptionData> _data;
 
     friend BaseOption<Option<T>>;
 };
@@ -120,32 +87,32 @@ private:
 template <class T>
 class MultiOption : public BaseOption<MultiOption<T>> {
 public:
-    MultiOption(std::shared_ptr<MultiOptionData<T>> data)
+    MultiOption(std::shared_ptr<OptionData> data)
         : _data(std::move(data))
     { }
 
     auto begin() const noexcept
     {
-        return _data->values.begin();
+        return std::any_cast<const std::vector<T>&>(_data->value).begin();
     }
 
     auto begin() noexcept
     {
-        return _data->values.begin();
+        return std::any_cast<std::vector<T>&>(_data->value).begin();
     }
 
     auto end() const noexcept
     {
-        return _data->values.end();
+        return std::any_cast<const std::vector<T>&>(_data->value).end();
     }
 
     auto end() noexcept
     {
-        return _data->values.end();
+        return std::any_cast<std::vector<T>&>(_data->value).end();
     }
 
 private:
-    std::shared_ptr<MultiOptionData<T>> _data;
+    std::shared_ptr<OptionData> _data;
 
     friend BaseOption<MultiOption<T>>;
 };
