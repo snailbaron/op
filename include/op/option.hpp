@@ -15,106 +15,147 @@
 
 namespace op {
 
-struct OptionData {
+class IFlag {
+public:
+    virtual ~IFlag() {}
+    virtual void raise() = 0;
+};
+
+class IOption {
+public:
+    virtual ~IOption() {}
+    virtual void set(std::string_view string) = 0;
+};
+
+struct OptionInfo {
     std::string help;
     std::string metavar = "VALUE";
     bool requiresArgument = false;
-    Value value;
-};
-
-class OptionWriter {
-public:
-    bool requiresArgument() const
-    {
-        return _data->requiresArgument;
-    }
-
-    void set(std::string_view string = "")
-    {
-        _set(_data->value, string);
-    }
-
-private:
-    std::shared_ptr<OptionData> _data;
-    std::function<void(std::any&, std::string_view)> _set;
-};
-
-template <class OptionType>
-class BaseOption {
-public:
-    OptionType help(std::string_view helpString)
-    {
-        me()._data->help = helpString;
-        return me();
-    }
-
-    OptionType metavar(std::string_view metavarString)
-    {
-        me()._data->metavar = metavarString;
-        return me();
-    }
-
-private:
-    constexpr OptionType& me()
-    {
-        return static_cast<OptionType&>(*this);
-    }
 };
 
 template <class T>
-class Option : public BaseOption<Option<T>> {
+T parseValue(std::string_view string)
+{
+    T value;
+    // TODO: fix separators
+    std::istringstream{string} >> value;
+    return value;
+}
+
+template <class Type>
+class OptionComponent {
 public:
-    Option(std::shared_ptr<OptionData> data)
-        : _data(std::move(data))
-    { }
+    virtual ~OptionComponent() {}
+
+    const std::string& help() const
+    {
+        return _info->help;
+    }
+
+    Type& help(std::string helpString)
+    {
+        _info->help = std::move(helpString);
+        return static_cast<Type&>(*this);
+    }
+
+    const std::string& metavar() const
+    {
+        return _info->metavar;
+    }
+
+    Type& metavar(std::string metavar)
+    {
+        _info->metavar = std::move(metavar);
+        return static_cast<Type&>(*this);
+    }
+
+private:
+    std::shared_ptr<OptionInfo> _info = std::make_shared<OptionInfo>();
+};
+
+template <class T>
+class SingleValueComponent {
+public:
+    virtual ~SingleValueComponent() {}
 
     const T& operator*() const
     {
-        return std::any_cast<const T&>(_data->value);
+        return *_value;
     }
 
     operator const T&() const
     {
-        return *this;
+        return **this;
     }
 
-private:
-    std::shared_ptr<OptionData> _data;
-
-    friend BaseOption<Option<T>>;
+protected:
+    std::shared_ptr<T> _value = std::make_shared<T>();
 };
 
 template <class T>
-class MultiOption : public BaseOption<MultiOption<T>> {
+class MultiValueComponent {
 public:
-    MultiOption(std::shared_ptr<OptionData> data)
-        : _data(std::move(data))
-    { }
+    virtual ~MultiValueComponent() {}
 
-    auto begin() const noexcept
+    auto begin() const
     {
-        return std::any_cast<const std::vector<T>&>(_data->value).begin();
+        return _values->begin();
     }
 
-    auto begin() noexcept
+    auto end() const
     {
-        return std::any_cast<std::vector<T>&>(_data->value).begin();
+        return _values->end();
     }
 
-    auto end() const noexcept
+protected:
+    std::shared_ptr<std::vector<T>> _values =
+        std::make_shared<std::vector<T>>();
+};
+
+class Flag
+    : public OptionComponent<Flag>
+    , public SingleValueComponent<bool>
+    , public IFlag {
+public:
+    void raise() override
     {
-        return std::any_cast<const std::vector<T>&>(_data->value).end();
+        *_value = true;
     }
+};
 
-    auto end() noexcept
+class MultiFlag
+    : public OptionComponent<MultiFlag>
+    , public SingleValueComponent<size_t>
+    , public IFlag {
+public:
+    void raise() override
     {
-        return std::any_cast<std::vector<T>&>(_data->value).end();
+        (*_value)++;
     }
+};
 
-private:
-    std::shared_ptr<OptionData> _data;
+template <class T>
+class Option
+    : public OptionComponent<Option<T>>
+    , public SingleValueComponent<T>
+    , public IOption {
+public:
+    void set(std::string_view string) override
+    {
+        *_value = parseValue<T>(string);
+    }
+};
 
-    friend BaseOption<MultiOption<T>>;
+template <class T>
+class MultiOption
+    : public OptionComponent<MultiOption<T>>
+    , public MultiValueComponent<T>
+    , public IOption {
+public:
+    void set(std::string_view string) override
+    {
+        _value->push_back(parseValue<T>(string));
+    }
 };
 
 } // namespace op

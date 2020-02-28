@@ -22,6 +22,48 @@ T parseValue(std::string_view string)
     return value;
 }
 
+class FlagValue {
+public:
+    bool isSet() const
+    {
+        return _value;
+    }
+
+    const bool& operator*() const
+    {
+        return _value;
+    }
+
+    bool& operator*()
+    {
+        return _value;
+    }
+
+private:
+    bool _value = false;
+};
+
+class MultiFlagValue {
+public:
+    bool isSet() const
+    {
+        return _count > 0;
+    }
+
+private:
+    size_t _count = 0;
+};
+
+template <class T>
+class OptionValue {
+
+
+private:
+    std::optional<T> _value;
+    std::optional<T> _defaultValue;
+};
+
+
 struct BaseValueStorage {
     virtual ~BaseValueStorage() {}
     virtual void parse(std::string_view string) = 0;
@@ -67,6 +109,20 @@ struct MultiValueStorage : BaseValueStorage {
 
 class Value {
 public:
+    Value() {}
+
+    template <class T>
+    static Value single()
+    {
+        return {std::make_any<SingleValueStorage<T>>()};
+    }
+
+    template <class T>
+    static Value multi()
+    {
+        return {std::make_any<MultiValueStorage<T>>()};
+    }
+
     void parse(std::string_view string)
     {
         std::any_cast<BaseValueStorage&>(_storage).parse(string);
@@ -118,6 +174,10 @@ public:
     }
 
 private:
+    Value(std::any&& storage)
+        : _storage(std::move(storage))
+    { }
+
     std::any _storage;
 };
 

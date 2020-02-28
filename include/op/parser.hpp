@@ -16,11 +16,16 @@ namespace op {
 class Parser {
 public:
     template <class... Args>
-    Option<bool> flag(Args&&... args)
+    Flag flag(Args&&... args)
     {
-        auto data = std::make_shared<OptionData<bool>>();
+        auto flag = Flag{};
+        _flags.push_back(std::make_unique<Flag>(flag));
 
-        data->isFlag = true;
+
+
+        auto data = std::make_shared<OptionData>();
+        data->value = Value::single<bool>();
+        data->requiresArgument = false;
         (addOption(args, data), ...);
         return {data};
     }
@@ -28,7 +33,10 @@ public:
     template <class... Args>
     Option<size_t> multiFlag(Args&&... args)
     {
-        auto data = std::make_shared<OptionData<size_t>>();
+        auto data = std::make_shared<OptionData>();
+        data->value = Value::single<size_t>();
+
+
         data->isFlag = true;
         (addOption(args, data), ...);
         return {data};
@@ -87,6 +95,8 @@ public:
         _log = &stream;
     }
 
+    void printHelp(std::ostream& output) const;
+
 private:
     template <class Error, class... Args>
     void error(Args&&... args)
@@ -124,7 +134,9 @@ private:
 
     void parseImpl(const std::vector<std::string>& args, bool stopAtNonOption);
 
-    std::map<std::string, std::shared_ptr<BaseOptionData>> _ops;
+    std::map<std::string, std::unique_ptr<IFlag>> _flags;
+    std::map<std::string, std::unique_ptr<IOption>> _options;
+    std::vector<std::shared_ptr<OptionInfo>> _optionInfo;
     bool _exceptionsEnabled = false;
     std::ostream* _log = &std::cerr;
 };

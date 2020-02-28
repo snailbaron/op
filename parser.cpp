@@ -28,6 +28,10 @@ void Parser::parseImpl(
 
         if (arg->length() > 1 && arg->at(0) == '-' && arg->at(1) != '-') {
             for (size_t i = 1; i < arg->length(); i++) {
+
+
+
+
                 if (auto keyOp = _ops.find(std::string{arg->at(i)});
                         keyOp != _ops.end()) {
                     auto& op = keyOp->second;
@@ -79,6 +83,25 @@ void Parser::parseImpl(
                 leftovers.push_back(*arg);
             }
         }
+    }
+}
+
+void Parser::printHelp(std::ostream& output) const
+{
+    for (const auto& info : _optionInfo) {
+        output << "  ";
+        if (auto it = info.keys.begin(); it != info.keys.end()) {
+            output << *it++;
+            for (; it != info.keys.end(); ++it) {
+                output << ", " << *it;
+            }
+        }
+        if (info.requiresArgument) {
+            output << "=";
+        }
+        output << info.metavar;
+        output << " " << info.help;
+        output << "\n";
     }
 }
 
